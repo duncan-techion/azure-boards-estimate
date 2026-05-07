@@ -7,12 +7,14 @@ import { SubTitle } from "../subtitle";
 import { marked } from "marked";
 
 /**
- * If the content contains HTML tags treat it as HTML (standard ADO description),
- * otherwise parse it as markdown.
+ * Parse markdown content if this field is configured for markdown.
  */
-function renderContent(content: string): string {
+function renderContent(content: string, isMarkdown: boolean): string {
     if (!content) {
         return content;
+    }
+    if (isMarkdown) {
+        return marked.parse(content) as string;
     }
     if (/<[a-z][\s\S]*>/i.test(content)) {
         return content; // already HTML
@@ -118,14 +120,16 @@ export const WorkItemDescription: React.FC<{
                 ""
             );
 
-            let desc = renderContent(rewriteRelativeUrls(
+            let desc = renderContent(
                 props.workItem.description || "",
-                baseUrl
-            ));
-            let ac = renderContent(rewriteRelativeUrls(
+                !!props.workItem.descriptionIsMarkdown
+            );
+            desc = rewriteRelativeUrls(desc, baseUrl);
+            let ac = renderContent(
                 props.workItem.AcceptanceCriteria || "",
-                baseUrl
-            ));
+                !!props.workItem.acceptanceCriteriaIsMarkdown
+            );
+            ac = rewriteRelativeUrls(ac, baseUrl);
 
             const [descResult, acResult] = await Promise.all([
                 resolveAuthenticatedImages(desc, token),
@@ -184,4 +188,3 @@ export const WorkItemDescription: React.FC<{
         </>
     );
 };
-

@@ -11,5 +11,7 @@ export interface IWorkItem {
     icon?: string;
     color?: string;
     AcceptanceCriteria?: any,
+    descriptionIsMarkdown?: boolean;
+    acceptanceCriteriaIsMarkdown?: boolean;
 
 }

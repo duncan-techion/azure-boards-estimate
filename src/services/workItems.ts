@@ -39,6 +39,8 @@ interface IWorkItemTypeInfo {
     color?: string;
     descriptionFieldRefName?: string;
     estimationFieldRefName?: string;
+    descriptionIsMarkdown?: boolean;
+    acceptanceCriteriaIsMarkdown?: boolean;
 }
 
 export class WorkItemService implements IWorkItemService {
@@ -155,6 +157,8 @@ export class WorkItemService implements IWorkItemService {
                 title: wi.fields["System.Title"],
                 workItemType: wi.fields["System.WorkItemType"],
                 AcceptanceCriteria: wi.fields["Microsoft.VSTS.Common.AcceptanceCriteria"],
+                acceptanceCriteriaIsMarkdown: false,
+                descriptionIsMarkdown: false,
                 description: ""
             };
         });
@@ -238,15 +242,32 @@ export class WorkItemService implements IWorkItemService {
                                     );
 
                                     // Look for the first page and get the first HTML control
-                                    const descriptionFieldRefName = this._getDescription(
+                                    const descriptionControl = this._getDescriptionControl(
                                         workItemType.layout.pages
                                     );
+                                    const acceptanceCriteriaControl = this._findControlByFieldRefName(
+                                        workItemType.layout.pages,
+                                        "Microsoft.VSTS.Common.AcceptanceCriteria"
+                                    );
+                                    const descriptionFieldRefName = descriptionControl
+                                        ? this._getControlFieldRefName(descriptionControl)
+                                        : "System.Description";
                                     projectInfo.workItemTypes.set(
                                         workItemTypeName,
                                         {
                                             icon: workItemType.icon,
                                             color: workItemType.color,
                                             descriptionFieldRefName,
+                                            descriptionIsMarkdown: !!(
+                                                descriptionControl &&
+                                                this._isMarkdownControl(descriptionControl)
+                                            ),
+                                            acceptanceCriteriaIsMarkdown: !!(
+                                                acceptanceCriteriaControl &&
+                                                this._isMarkdownControl(
+                                                    acceptanceCriteriaControl
+                                                )
+                                            ),
                                             estimationFieldRefName:
                                                 witEstimationFieldRefNameMapping[
                                                     workItemType.name
@@ -263,6 +284,8 @@ export class WorkItemService implements IWorkItemService {
                                 icon: workItemType.icon && workItemType.icon.id,
                                 color: workItemType.color,
                                 descriptionFieldRefName: "System.Description", // Default to description
+                                descriptionIsMarkdown: false,
+                                acceptanceCriteriaIsMarkdown: false,
                                 estimationFieldRefName:
                                     workItemType.estimationFieldRefName
                             });
@@ -316,7 +339,11 @@ export class WorkItemService implements IWorkItemService {
                         workItemFieldData.fields[
                             workItemTypeInfo.descriptionFieldRefName
                         ];
+                    workItem.descriptionIsMarkdown =
+                        !!workItemTypeInfo.descriptionIsMarkdown;
                 }
+                workItem.acceptanceCriteriaIsMarkdown =
+                    !!workItemTypeInfo.acceptanceCriteriaIsMarkdown;
 
                 if (workItemTypeInfo.estimationFieldRefName) {
                     workItem.estimate =
@@ -358,20 +385,67 @@ export class WorkItemService implements IWorkItemService {
         );
     }
 
-    private _getDescription(pages: Page[]): string {
+    private _getDescriptionControl(pages: Page[]) {
         for (const page of pages) {
             for (const section of page.sections) {
                 for (const group of section.groups) {
                     for (const control of group.controls) {
                         if (control.controlType === "HtmlFieldControl") {
-                            return control.id;
+                            return control;
                         }
                     }
                 }
             }
         }
+    }
 
-        return "System.Description";
+    private _findControlByFieldRefName(pages: Page[], fieldRefName: string) {
+        const lowerFieldRefName = fieldRefName.toLocaleLowerCase();
+        for (const page of pages) {
+            for (const section of page.sections) {
+                for (const group of section.groups) {
+                    for (const control of group.controls) {
+                        if (
+                            this._getControlFieldRefName(control)
+                                .toLocaleLowerCase() === lowerFieldRefName
+                        ) {
+                            return control;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private _getControlFieldRefName(control: any): string {
+        const inputs = (control && control.contribution && control.contribution.inputs) || {};
+        const inputFieldRefName =
+            inputs.FieldName ||
+            inputs.fieldName ||
+            inputs.ReferenceName ||
+            inputs.referenceName;
+        return inputFieldRefName || control.id || "System.Description";
+    }
+
+    private _isMarkdownControl(control: any): boolean {
+        const controlType = (control.controlType || "").toLocaleLowerCase();
+        if (controlType.includes("markdown")) {
+            return true;
+        }
+
+        const metadata = (control.metadata || "").toString();
+        if (metadata && metadata.toLocaleLowerCase().includes("markdown")) {
+            return true;
+        }
+
+        const inputs = (control.contribution && control.contribution.inputs) || {};
+        return Object.keys(inputs).some(key => {
+            const value = inputs[key];
+            return (
+                typeof value === "string" &&
+                value.toLocaleLowerCase().includes("markdown")
+            );
+        });
     }
 }
 
